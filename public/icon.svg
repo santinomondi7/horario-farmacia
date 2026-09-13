@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="mondinoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#059669" />
+      <stop offset="50%" stop-color="#0d9488" />
+      <stop offset="100%" stop-color="#0f766e" />
+    </linearGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f59e0b" />
+      <stop offset="100%" stop-color="#d97706" />
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#042f2e" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+  
+  <!-- Background with rounded edges -->
+  <rect width="512" height="512" rx="128" fill="url(#mondinoGrad)" />
+  
+  <!-- Subtle inner glow rim -->
+  <rect x="12" y="12" width="488" height="488" rx="116" fill="none" stroke="#ffffff" stroke-opacity="0.15" stroke-width="6" />
+
+  <!-- Pharmacy Cross -->
+  <g filter="url(#shadow)">
+    <!-- Horizontal Cross Bar -->
+    <rect x="116" y="206" width="280" height="100" rx="32" fill="#ffffff" />
+    <!-- Vertical Cross Bar -->
+    <rect x="206" y="116" width="100" height="280" rx="32" fill="#ffffff" />
+    
+    <!-- Central Mondino Monogram "M" -->
+    <path d="M 216 300 L 216 216 L 246 266 L 266 266 L 296 216 L 296 300" 
+          fill="none" stroke="#0d9488" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" />
+  </g>
+  
+  <!-- Golden Accent Leaf/Sparkle symbolizing Perfumery & Health -->
+  <circle cx="360" cy="150" r="22" fill="url(#goldGrad)" filter="url(#shadow)" />
+  <path d="M 360 132 Q 378 150 360 168 Q 342 150 360 132 Z" fill="#ffffff" opacity="0.9" />
+</svg>
