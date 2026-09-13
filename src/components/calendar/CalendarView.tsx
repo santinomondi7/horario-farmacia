@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight, Clock, Users, ArrowRight, CalendarRange } from 'lucide-react';
-import { Employee, Shift, Week, CurrentUser } from '../../types';
-import { DAYS_OF_WEEK } from '../../constants/pharmacy';
+import { Employee, Shift, Week, CurrentUser, DAYS_OF_WEEK } from '../../types';
 import { formatShiftsForDay, formatDateSpanish } from '../../utils/timeCalculations';
 
 interface CalendarViewProps { weeks: Week[]; employees: Employee[]; shifts: Shift[]; currentUser: CurrentUser; onSelectWeek: (weekId: string) => void; onGoToSchedule: () => void; }
