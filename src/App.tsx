@@ -3,10 +3,10 @@ import { Navbar } from './components/layout/Navbar';
 import { BottomNav } from './components/layout/BottomNav';
 import { DashboardView } from './components/dashboard/DashboardView';
 import { WeeklyScheduleTable } from './components/schedule/WeeklyScheduleTable';
-import { CalendarView } from './components/calendar/CalendarView';
 import { CoverageTimelineView } from './components/coverage/CoverageTimelineView';
 import { AuditLogView } from './components/history/AuditLogView';
 import { EmployeesManagementView } from './components/employees/EmployeesManagementView';
+import { CalendarView } from './components/calendar/CalendarView';
 import { WhatsAppExportModal } from './components/whatsapp/WhatsAppExportModal';
 import { OfflineIndicator } from './components/common/OfflineIndicator';
 import { LoginScreen } from './components/auth/LoginScreen';
@@ -14,7 +14,7 @@ import { StorageService } from './services/storageService';
 import { AuthService, AuthSessionData } from './services/authService';
 import { getSupabaseClient, isSupabaseConfigured } from './services/supabaseClient';
 import { getCurrentWeekInfo } from './constants/pharmacy';
-import { CurrentUser, Employee, Week, Shift, ScheduleAuditLog, DayOfWeek, ShiftStatus } from './types';
+import { CurrentUser, Employee, Week, Shift, ScheduleAuditLog, DayOfWeek, ShiftStatus, WeeklyPayment } from './types';
 import { analyzeWeekCoverage } from './utils/coverageEngine';
 import { CheckCircle2, AlertCircle, X } from 'lucide-react';
 
@@ -25,15 +25,15 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
 
   // Navigation
-  const [currentTab, setCurrentTab] = useState<'dashboard' | 'schedule' | 'calendar' | 'coverage' | 'history' | 'employees'>('dashboard');
+  const [currentTab, setCurrentTab] = useState<'dashboard' | 'schedule' | 'coverage' | 'history' | 'calendar' | 'employees'>('dashboard');
 
   // Application Data States
   const [weeks, setWeeks] = useState<Week[]>([]);
   const [currentWeekId, setCurrentWeekId] = useState<string>('');
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
-  const [calendarShifts, setCalendarShifts] = useState<Shift[]>([]);
   const [auditLogs, setAuditLogs] = useState<ScheduleAuditLog[]>([]);
+  const [weeklyPayments, setWeeklyPayments] = useState<WeeklyPayment[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
 
   // Modals & Feedback
@@ -125,10 +125,7 @@ export default function App() {
     setLoading(true);
     try {
       // 1. Fetch weeks
-      let loadedWeeks = await StorageService.getWeeks();
-      // The admin gets a complete planning horizon through December 31.
-      // Horarios and Calendario use these exact same Week records.
-      loadedWeeks = await StorageService.ensureWeeksThroughEndOfYear(currentUser);
+      const loadedWeeks = await StorageService.getWeeks();
       setWeeks(loadedWeeks);
 
       // Determine initial active week
@@ -147,12 +144,18 @@ export default function App() {
       // 3. Fetch shifts for the active week
       const loadedShifts = await StorageService.getShifts(activeWeekId);
       setShifts(loadedShifts);
-      const loadedCalendarShifts = await StorageService.getShiftsForWeeks(loadedWeeks.map(w => w.id));
-      setCalendarShifts(loadedCalendarShifts);
 
       // 4. Fetch audit logs (change_history table)
       const loadedLogs = await StorageService.getAuditLogs();
       setAuditLogs(loadedLogs);
+
+      // 5. Fetch weekly payment status for admins
+      if (currentUser.role === 'admin') {
+        const loadedPayments = await StorageService.getWeeklyPayments(activeWeekId);
+        setWeeklyPayments(loadedPayments);
+      } else {
+        setWeeklyPayments([]);
+      }
     } catch (err) {
       console.error('Error loading data:', err);
       showToast('Error al cargar datos desde el almacenamiento.', 'error');
@@ -177,17 +180,15 @@ export default function App() {
     const handleRemoteAdminUpdate = async (notificationText?: string, actorName?: string) => {
       if (!mounted) return;
       try {
-        const [updatedShifts, updatedLogs, updatedEmployees, updatedCalendarShifts] = await Promise.all([
+        const [updatedShifts, updatedLogs, updatedEmployees] = await Promise.all([
           StorageService.getShifts(currentWeekId),
           StorageService.getAuditLogs(),
           StorageService.getEmployees(currentUser.role),
-          StorageService.getShiftsForWeeks(weeks.map(w => w.id)),
         ]);
         if (mounted) {
           setShifts(updatedShifts);
           setAuditLogs(updatedLogs);
           setEmployees(updatedEmployees);
-          setCalendarShifts(updatedCalendarShifts);
           // Only show notification if actor is NOT the current logged-in user
           if (notificationText && actorName !== currentUser.name) {
             showToast(notificationText, 'info');
@@ -286,8 +287,10 @@ export default function App() {
     try {
       const loadedShifts = await StorageService.getShifts(weekId);
       setShifts(loadedShifts);
-      const loadedCalendarShifts = await StorageService.getShiftsForWeeks(weeks.map(w => w.id));
-      setCalendarShifts(loadedCalendarShifts);
+      if (currentUser?.role === 'admin') {
+        const loadedPayments = await StorageService.getWeeklyPayments(weekId);
+        setWeeklyPayments(loadedPayments);
+      }
     } catch (err) {
       console.error('Error loading week shifts:', err);
     }
@@ -330,7 +333,6 @@ export default function App() {
       setShifts(updatedShifts);
       const updatedLogs = await StorageService.getAuditLogs();
       setAuditLogs(updatedLogs);
-      setCalendarShifts(await StorageService.getShiftsForWeeks(weeks.map(w => w.id)));
 
       showToast(`Horario de ${empName} actualizado con éxito.`);
     } catch (err: any) {
@@ -360,12 +362,28 @@ export default function App() {
       setShifts(updatedShifts);
       const updatedLogs = await StorageService.getAuditLogs();
       setAuditLogs(updatedLogs);
-      setCalendarShifts(await StorageService.getShiftsForWeeks(weeks.map(w => w.id)));
 
       showToast(`Se copiaron ${count} turnos desde la semana ${previousWeek.id} con éxito.`);
     } catch (err: any) {
       console.error('Copy week error:', err);
       showToast(err.message || 'Error al copiar la semana previa.', 'error');
+    }
+  };
+
+  const handleToggleWeeklyPayment = async (employeeId: string, paid: boolean): Promise<void> => {
+    if (!currentUser || currentUser.role !== 'admin') {
+      showToast('Solo administradores pueden modificar pagos.', 'error');
+      return;
+    }
+    const emp = employees.find(e => e.id === employeeId);
+    try {
+      await StorageService.setWeeklyPayment(currentWeek.id, employeeId, paid, currentUser, emp?.name || 'Empleado');
+      const refreshed = await StorageService.getWeeklyPayments(currentWeek.id);
+      setWeeklyPayments(refreshed);
+      showToast(`${emp?.name || 'Empleado'}: ${paid ? 'pago marcado como realizado.' : 'pago marcado como pendiente.'}`);
+    } catch (err: any) {
+      showToast(err.message || 'Error al actualizar el pago.', 'error');
+      throw err;
     }
   };
 
@@ -497,16 +515,7 @@ export default function App() {
               />
             )}
 
-            {currentTab === 'calendar' && (
-              <CalendarView
-                weeks={weeks}
-                employees={employees}
-                shifts={calendarShifts}
-                currentUser={currentUser}
-                onSelectWeek={handleSelectWeek}
-                onGoToSchedule={() => setCurrentTab('schedule')}
-              />
-            )}
+            {currentTab === 'calendar' && <CalendarView />}
 
             {currentTab === 'coverage' && (
               <CoverageTimelineView
@@ -534,6 +543,8 @@ export default function App() {
                 onUpdateEmployee={handleUpdateEmployee}
                 onAddEmployee={handleAddEmployee}
                 onDeleteEmployee={handleDeleteEmployee}
+                weeklyPayments={weeklyPayments}
+                onToggleWeeklyPayment={handleToggleWeeklyPayment}
               />
             )}
           </>

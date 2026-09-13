@@ -2,6 +2,7 @@ import React from 'react';
 import {
   LayoutDashboard,
   Calendar,
+  CalendarDays,
   AlertTriangle,
   History,
   Users,
@@ -9,8 +10,8 @@ import {
 import { CurrentUser } from '../../types';
 
 interface BottomNavProps {
-  currentTab: 'dashboard' | 'schedule' | 'calendar' | 'coverage' | 'history' | 'employees';
-  onSelectTab: (tab: 'dashboard' | 'schedule' | 'calendar' | 'coverage' | 'history' | 'employees') => void;
+  currentTab: 'dashboard' | 'schedule' | 'coverage' | 'history' | 'calendar' | 'employees';
+  onSelectTab: (tab: 'dashboard' | 'schedule' | 'coverage' | 'history' | 'calendar' | 'employees') => void;
   currentUser: CurrentUser;
   coverageDeficienciesCount: number;
 }
@@ -58,7 +59,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
             currentTab === 'calendar' ? 'text-teal-400 font-bold' : 'text-slate-400 hover:text-slate-200'
           }`}
         >
-          <Calendar className="w-5 h-5" />
+          <CalendarDays className="w-5 h-5" />
           <span className="text-[10px] mt-1">Calendario</span>
         </button>
 

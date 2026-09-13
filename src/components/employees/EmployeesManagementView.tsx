@@ -14,8 +14,9 @@ import {
   Power,
   Shield,
   UserCheck,
+  CircleDollarSign,
 } from 'lucide-react';
-import { Employee, CurrentUser, Shift, Week, UserRole } from '../../types';
+import { Employee, CurrentUser, Shift, Week, UserRole, WeeklyPayment } from '../../types';
 import { calculateEmployeeWeeklyStats, formatCurrencyARS } from '../../utils/timeCalculations';
 
 interface EmployeesManagementViewProps {
@@ -26,6 +27,8 @@ interface EmployeesManagementViewProps {
   onUpdateEmployee: (updated: Employee) => Promise<boolean>;
   onAddEmployee?: (employee: Omit<Employee, 'id'>) => Promise<Employee | null>;
   onDeleteEmployee?: (employeeId: string) => Promise<boolean>;
+  weeklyPayments: WeeklyPayment[];
+  onToggleWeeklyPayment: (employeeId: string, paid: boolean) => Promise<void>;
 }
 
 const PRESET_COLORS = [
@@ -47,6 +50,8 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
   onUpdateEmployee,
   onAddEmployee,
   onDeleteEmployee,
+  weeklyPayments,
+  onToggleWeeklyPayment,
 }) => {
   const isAdmin = currentUser.role === 'admin';
 
@@ -148,6 +153,21 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
       setTimeout(() => setSuccessMsg(null), 3000);
     } catch (err: any) {
       setErrorMsg(err.message || 'Error al cambiar estado.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleToggleWeeklyPayment = async (emp: Employee, paid: boolean) => {
+    if (!isAdmin) return;
+    setSaving(true);
+    setErrorMsg(null);
+    try {
+      await onToggleWeeklyPayment(emp.id, paid);
+      setSuccessMsg(`${emp.name}: semana ${paid ? 'marcada como pagada' : 'marcada como pendiente'}.`);
+      setTimeout(() => setSuccessMsg(null), 3000);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Error al actualizar el estado del pago.');
     } finally {
       setSaving(false);
     }
@@ -309,7 +329,7 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
               </span>
             </h3>
             <p className="text-xs text-slate-400">
-              Administración de personal, roles, precios por hora y estado de actividad.
+              Administración de personal, precios por hora, liquidación y control del pago semanal. Solo el administrador puede cambiar el estado del pago.
             </p>
           </div>
 
@@ -324,7 +344,7 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-[750px]">
+          <table className="w-full text-left border-collapse min-w-[900px]">
             <thead>
               <tr className="border-b border-slate-800 bg-slate-950/70 text-slate-400 text-xs uppercase tracking-wider">
                 <th className="py-3 px-4 font-bold">Empleado</th>
@@ -332,6 +352,7 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
                 <th className="py-3 px-4 font-bold">Precio / Hora</th>
                 <th className="py-3 px-4 font-bold">Horas Semanales</th>
                 <th className="py-3 px-4 font-bold text-right">Liquidación Estimada</th>
+                <th className="py-3 px-4 font-bold text-center">Pago de la Semana</th>
                 <th className="py-3 px-4 font-bold text-center">Estado</th>
                 <th className="py-3 px-4 font-bold text-center w-28">Acciones</th>
               </tr>
@@ -406,6 +427,30 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
                         {stats.regularHours}h reg
                         {stats.overtimeHours > 0 && ` + ${stats.overtimeHours}h extra`}
                       </div>
+                    </td>
+
+                    {/* Weekly Payment Toggle */}
+                    <td className="py-3.5 px-4 text-center">
+                      {(() => {
+                        const paid = weeklyPayments.some(p => p.weekId === currentWeek.id && p.employeeId === emp.id && p.paid);
+                        return (
+                          <label className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[10px] font-bold transition border cursor-pointer ${
+                            paid
+                              ? 'bg-emerald-950/80 text-emerald-300 border-emerald-800'
+                              : 'bg-amber-950/70 text-amber-300 border-amber-800'
+                          }`} title={paid ? 'Desmarcar pago de esta semana' : 'Marcar semana como pagada'}>
+                            <input
+                              type="checkbox"
+                              checked={paid}
+                              onChange={e => handleToggleWeeklyPayment(emp, e.target.checked)}
+                              disabled={saving}
+                              className="w-4 h-4 rounded bg-slate-950 border-slate-600 text-teal-600 focus:ring-teal-500"
+                            />
+                            <CircleDollarSign className="w-3.5 h-3.5" />
+                            <span>{paid ? 'Pagada' : 'Pendiente'}</span>
+                          </label>
+                        );
+                      })()}
                     </td>
 
                     {/* Active Toggle */}

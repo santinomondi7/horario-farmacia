@@ -58,6 +58,21 @@ export const WeeklyScheduleTable: React.FC<WeeklyScheduleTableProps> = ({
   const [showCopyConfirm, setShowCopyConfirm] = useState<boolean>(false);
 
   const isAdmin = currentUser.role === 'admin';
+  const getDateForDay = (dayId: DayOfWeek) => {
+    const monday = new Date(`${currentWeek.startDate}T12:00:00`);
+    const offset = DAYS_OF_WEEK.findIndex(d => d.id === dayId);
+    const date = new Date(monday);
+    date.setDate(monday.getDate() + offset);
+    return date;
+  };
+
+  const formatDayWithDate = (dayId: DayOfWeek) => {
+    const date = getDateForDay(dayId);
+    const day = DAYS_OF_WEEK.find(d => d.id === dayId)!;
+    const month = date.toLocaleDateString('es-AR', { month: 'long' });
+    return `${day.name} ${date.getDate()} de ${month}`;
+  };
+
 
   // Navigate weeks
   const sortedWeeks = [...weeks].sort((a, b) => a.startDate.localeCompare(b.startDate));
@@ -95,18 +110,6 @@ export const WeeklyScheduleTable: React.FC<WeeklyScheduleTableProps> = ({
   };
 
   const currentDayInfo = DAYS_OF_WEEK.find(d => d.id === selectedDayTab) || DAYS_OF_WEEK[0];
-  const getDateForDay = (dayId: DayOfWeek) => {
-    const dayIndex = DAYS_OF_WEEK.findIndex(d => d.id === dayId);
-    const d = new Date(`${currentWeek.startDate}T12:00:00`);
-    d.setDate(d.getDate() + dayIndex);
-    return d;
-  };
-
-  const formatDayWithNumber = (dayId: DayOfWeek) => {
-    const d = getDateForDay(dayId);
-    return d.toLocaleDateString('es-AR', { day: 'numeric', month: 'long' });
-  };
-
 
   return (
     <div id="weekly-schedule-table-container" className="space-y-4">
@@ -148,19 +151,6 @@ export const WeeklyScheduleTable: React.FC<WeeklyScheduleTableProps> = ({
           >
             <ChevronRight className="w-5 h-5" />
           </button>
-
-          <select
-            value={currentWeek.id}
-            onChange={(e) => onSelectWeek(e.target.value)}
-            className="max-w-[260px] bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-xl px-3 py-2 focus:outline-none focus:border-teal-500"
-            title="Seleccionar cualquier semana del calendario"
-          >
-            {sortedWeeks.map((week) => (
-              <option key={week.id} value={week.id}>
-                Semana {week.weekNumber} · {formatDateSpanish(week.startDate)} - {formatDateSpanish(week.endDate)}
-              </option>
-            ))}
-          </select>
         </div>
 
         {/* View Mode & Actions */}
@@ -257,7 +247,7 @@ export const WeeklyScheduleTable: React.FC<WeeklyScheduleTableProps> = ({
                       : 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800'
                   }`}
                 >
-                  <span className="block text-[11px] uppercase opacity-80">{day.name.slice(0, 3)} {getDateForDay(day.id).getDate()}</span>
+                  <span className="block text-[11px] uppercase opacity-80">{day.name.slice(0, 3)}</span>
                   <span className="text-[10px] opacity-70 font-mono">
                     {day.id === 'sun' ? '10-22' : '09-23'}
                   </span>
@@ -269,7 +259,7 @@ export const WeeklyScheduleTable: React.FC<WeeklyScheduleTableProps> = ({
           {/* Current Day Header Card */}
           <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="text-base font-bold text-white capitalize">{currentDayInfo.name} {formatDayWithNumber(selectedDayTab)}</span>
+              <span className="text-base font-bold text-white capitalize">{currentDayInfo.name}</span>
               <span className="text-xs text-slate-400 font-mono">
                 {currentDayInfo.isSunday ? 'Horario especial: 10:00 - 14:00 y 17:00 - 22:00' : '09:00 a 23:00 hs'}
               </span>
@@ -405,7 +395,7 @@ export const WeeklyScheduleTable: React.FC<WeeklyScheduleTableProps> = ({
                         }`}
                       >
                         <div className="flex flex-col items-center">
-                          <span>{day.name} {getDateForDay(day.id).getDate()}</span>
+                          <span className="leading-tight">{formatDayWithDate(day.id)}</span>
                           <span className="text-[10px] font-normal text-slate-400 lowercase">
                             {day.id === 'sun' ? '10-14 y 17-22' : '09:00 - 23:00'}
                           </span>

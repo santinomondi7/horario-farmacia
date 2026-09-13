@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   Calendar,
+  CalendarDays,
   Shield,
   User,
   Users,
@@ -15,8 +16,8 @@ import { CurrentUser, Employee } from '../../types';
 import { PWAInstallButton } from '../common/PWAInstallButton';
 
 interface NavbarProps {
-  currentTab: 'dashboard' | 'schedule' | 'calendar' | 'coverage' | 'history' | 'employees';
-  onSelectTab: (tab: 'dashboard' | 'schedule' | 'calendar' | 'coverage' | 'history' | 'employees') => void;
+  currentTab: 'dashboard' | 'schedule' | 'coverage' | 'history' | 'calendar' | 'employees';
+  onSelectTab: (tab: 'dashboard' | 'schedule' | 'coverage' | 'history' | 'calendar' | 'employees') => void;
   currentUser: CurrentUser;
   employees: Employee[];
   onLogout: () => void;
@@ -94,10 +95,12 @@ export const Navbar: React.FC<NavbarProps> = ({
           <button
             onClick={() => onSelectTab('calendar')}
             className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 ${
-              currentTab === 'calendar' ? 'bg-slate-800 text-teal-300 shadow-xs' : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              currentTab === 'calendar'
+                ? 'bg-slate-800 text-teal-300 shadow-xs'
+                : 'text-slate-400 hover:text-white hover:bg-slate-900'
             }`}
           >
-            <Calendar className="w-4 h-4" />
+            <CalendarDays className="w-4 h-4" />
             <span>Calendario</span>
           </button>
 

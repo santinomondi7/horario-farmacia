@@ -1,78 +1,96 @@
 import React, { useMemo, useState } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, Clock, Users, ArrowRight, CalendarRange } from 'lucide-react';
-import { Employee, Shift, Week, CurrentUser, DAYS_OF_WEEK } from '../../types';
-import { formatShiftsForDay, formatDateSpanish } from '../../utils/timeCalculations';
+import { CalendarDays, ChevronLeft, ChevronRight, Grid3X3, List } from 'lucide-react';
 
-interface CalendarViewProps { weeks: Week[]; employees: Employee[]; shifts: Shift[]; currentUser: CurrentUser; onSelectWeek: (weekId: string) => void; onGoToSchedule: () => void; }
 const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const WEEKDAYS = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
-const dateKey = (date: Date) => date.toISOString().slice(0, 10);
-const mondayIndex = (date: Date) => { const d = date.getDay(); return d === 0 ? 6 : d - 1; };
+const WEEKDAYS_FULL = ['lunes','martes','miércoles','jueves','viernes','sábado','domingo'];
 
-export const CalendarView: React.FC<CalendarViewProps> = ({ weeks, employees, shifts, onSelectWeek, onGoToSchedule }) => {
-  const today = new Date();
-  const [month, setMonth] = useState(today.getMonth());
-  const [year, setYear] = useState(today.getFullYear());
-  const [mode, setMode] = useState<'month' | 'year'>('month');
-  const [selectedDate, setSelectedDate] = useState(dateKey(today));
-  const activeEmployees = employees.filter(e => e.active !== false);
+const pad = (n: number) => String(n).padStart(2, '0');
+const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const mondayIndex = (d: Date) => (d.getDay() + 6) % 7;
 
-  const shiftByDate = useMemo(() => {
-    const map = new Map<string, Shift[]>();
-    for (const week of weeks) {
-      const weekShifts = shifts.filter(s => s.weekId === week.id);
-      for (const shift of weekShifts) {
-        const monday = new Date(`${week.startDate}T12:00:00`);
-        const day = DAYS_OF_WEEK.findIndex(d => d.id === shift.dayOfWeek);
-        const d = new Date(monday);
-        d.setDate(monday.getDate() + day);
-        const key = dateKey(d);
-        map.set(key, [...(map.get(key) || []), shift]);
-      }
-    }
-    return map;
-  }, [weeks, shifts]);
+function formatDayLong(d: Date) {
+  return `${WEEKDAYS_FULL[mondayIndex(d)]} ${d.getDate()} de ${MONTHS[d.getMonth()].toLowerCase()}`;
+}
 
-  const selectedWeek = weeks.find(w => selectedDate >= w.startDate && selectedDate <= w.endDate);
-  const storedWeek = selectedWeek;
-  const selectedShifts = shiftByDate.get(selectedDate) || [];
+function monthCells(year: number, month: number) {
+  const first = new Date(year, month, 1);
+  const start = new Date(year, month, 1 - mondayIndex(first));
+  return Array.from({ length: 42 }, (_, i) => new Date(start.getFullYear(), start.getMonth(), start.getDate() + i));
+}
 
-  const cells = useMemo(() => {
-    const first = new Date(year, month, 1, 12);
-    const days = new Date(year, month + 1, 0, 12).getDate();
-    const result: (Date | null)[] = Array(mondayIndex(first)).fill(null);
-    for (let i = 1; i <= days; i++) result.push(new Date(year, month, i, 12));
-    while (result.length % 7) result.push(null);
-    return result;
-  }, [year, month]);
-
-  const changeMonth = (delta: number) => { const d = new Date(year, month + delta, 1, 12); setYear(d.getFullYear()); setMonth(d.getMonth()); };
-  const selectDate = (date: Date) => {
-    const key = dateKey(date);
-    setSelectedDate(key);
-    const week = weeks.find(w => key >= w.startDate && key <= w.endDate);
-    if (week) onSelectWeek(week.id);
-  };
-
-  const renderDay = (date: Date) => {
-    const key = dateKey(date); const dayShifts = shiftByDate.get(key) || [];
-    const isToday = key === dateKey(today); const isSelected = key === selectedDate;
-    const employeesWithShift = new Set(dayShifts.filter(s => s.status === 'normal').map(s => s.employeeId)).size;
-    return <button key={key} onClick={() => selectDate(date)} className={`min-h-[92px] sm:min-h-[112px] p-2 text-left border rounded-xl transition ${isSelected ? 'border-teal-500 bg-teal-950/30' : 'border-slate-800 bg-slate-900/70 hover:border-slate-700'} ${isToday ? 'ring-1 ring-teal-400/60' : ''}`}>
-      <div className="flex items-center justify-between"><span className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold ${isToday ? 'bg-teal-600 text-white' : 'text-slate-200 bg-slate-800'}`}>{date.getDate()}</span>{dayShifts.length > 0 && <span className="text-[10px] text-teal-300 font-semibold">{employeesWithShift} pers.</span>}</div>
-      <div className="mt-2 space-y-1">{activeEmployees.slice(0, 3).map(emp => { const ss = dayShifts.filter(s => s.employeeId === emp.id); if (!ss.length) return null; return <div key={emp.id} className="text-[10px] truncate text-slate-300"><span className="font-semibold">{emp.name}:</span> {formatShiftsForDay(ss)}</div>; })}{dayShifts.length > 0 && dayShifts.filter(s => !activeEmployees.some(e => e.id === s.employeeId)).length > 0 && <div className="text-[10px] text-slate-500">+ más...</div>}</div>
-    </button>;
-  };
-
-  return <div className="space-y-4">
-    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-slate-900/90 border border-slate-800 p-4 rounded-2xl">
-      <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-teal-600/20 text-teal-400 flex items-center justify-center border border-teal-500/30"><CalendarDays className="w-5 h-5" /></div><div><h2 className="text-base font-bold text-white">Calendario de horarios</h2><p className="text-xs text-slate-400">Los turnos son los mismos registros que aparecen en Horarios.</p></div></div>
-      <div className="flex flex-wrap gap-2"><div className="flex bg-slate-950 border border-slate-800 rounded-xl p-1"><button onClick={() => setMode('month')} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${mode === 'month' ? 'bg-teal-600 text-white' : 'text-slate-400'}`}>Mensual</button><button onClick={() => setMode('year')} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${mode === 'year' ? 'bg-teal-600 text-white' : 'text-slate-400'}`}>Anual</button></div><button onClick={onGoToSchedule} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-teal-300 text-xs font-semibold">Ver Horarios <ArrowRight className="w-3.5 h-3.5" /></button></div>
+function MonthMini({ year, month }: { year: number; month: number }) {
+  const cells = monthCells(year, month);
+  return (
+    <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-3">
+      <h3 className="text-sm font-bold text-white mb-2">{MONTHS[month]}</h3>
+      <div className="grid grid-cols-7 gap-1 text-[9px] text-slate-500 mb-1">
+        {WEEKDAYS.map(d => <span key={d} className="text-center font-bold">{d[0]}</span>)}
+      </div>
+      <div className="grid grid-cols-7 gap-1">
+        {cells.map((d, i) => {
+          const inMonth = d.getMonth() === month;
+          const isToday = iso(d) === iso(new Date());
+          return <span key={i} className={`h-5 flex items-center justify-center rounded-md text-[9px] ${inMonth ? 'text-slate-300' : 'text-slate-700'} ${isToday ? 'bg-teal-600 text-white font-black' : ''}`}>{d.getDate()}</span>;
+        })}
+      </div>
     </div>
-    {mode === 'month' ? <>
-      <div className="flex items-center justify-between bg-slate-900 border border-slate-800 rounded-2xl p-3"><button onClick={() => changeMonth(-1)} className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700"><ChevronLeft className="w-5 h-5" /></button><div className="text-center"><h3 className="text-lg font-bold text-white">{MONTHS[month]} {year}</h3><p className="text-[11px] text-slate-500">Elegí un día para abrir su semana</p></div><button onClick={() => changeMonth(1)} className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700"><ChevronRight className="w-5 h-5" /></button></div>
-      <div className="grid grid-cols-7 gap-1.5">{WEEKDAYS.map(d => <div key={d} className="text-center text-[10px] uppercase font-bold text-slate-500 py-2">{d}</div>)}{cells.map((d, i) => d ? renderDay(d) : <div key={`empty-${i}`} className="min-h-[92px] sm:min-h-[112px] rounded-xl border border-transparent" />)}</div>
-    </> : <div className="space-y-3"><div className="flex items-center justify-between bg-slate-900 border border-slate-800 rounded-2xl p-3"><button onClick={() => setYear(y => y - 1)} className="p-2 rounded-xl bg-slate-800"><ChevronLeft className="w-5 h-5" /></button><h3 className="text-lg font-bold text-white">{year}</h3><button onClick={() => setYear(y => y + 1)} className="p-2 rounded-xl bg-slate-800"><ChevronRight className="w-5 h-5" /></button></div><div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">{MONTHS.map((name, m) => { const days = new Date(year, m + 1, 0).getDate(); const count = Array.from({ length: days }, (_, i) => shiftByDate.get(dateKey(new Date(year, m, i + 1, 12)))?.length || 0).reduce((a,b)=>a+b,0); return <button key={name} onClick={() => { setMonth(m); setMode('month'); }} className="text-left bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-2xl p-4 transition"><div className="flex justify-between"><h3 className="font-bold text-white">{name}</h3><CalendarRange className="w-4 h-4 text-teal-400" /></div><p className="text-xs text-slate-500 mt-2">{days} días · {count} registros de turnos</p></button>; })}</div></div>}
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4"><div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3"><div><h3 className="font-bold text-white">{formatDateSpanish(selectedDate)}</h3><p className="text-xs text-slate-500">{storedWeek ? `Semana ${storedWeek.weekNumber} · ${storedWeek.id}` : 'Semana no creada todavía'}</p></div><button disabled={!storedWeek} onClick={() => { if (storedWeek) { onSelectWeek(storedWeek.id); onGoToSchedule(); } }} className="text-xs font-semibold text-teal-300 flex items-center gap-1">Abrir esta semana <ArrowRight className="w-3.5 h-3.5" /></button></div>{selectedShifts.length === 0 ? <p className="text-sm text-slate-500 py-3">No hay turnos cargados para este día.</p> : <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">{activeEmployees.map(emp => { const ss=selectedShifts.filter(s=>s.employeeId===emp.id); if(!ss.length) return null; return <div key={emp.id} className="bg-slate-950 border border-slate-800 rounded-xl p-3"><div className="flex items-center gap-2"><Users className="w-4 h-4 text-teal-400"/><span className="text-xs font-bold text-white">{emp.name}</span></div><div className="mt-1 text-xs text-slate-300"><Clock className="inline w-3.5 h-3.5 mr-1 text-slate-500"/>{formatShiftsForDay(ss)}</div></div>; })}</div>}</div>
-  </div>;
+  );
+}
+
+export const CalendarView: React.FC = () => {
+  const today = new Date();
+  const [view, setView] = useState<'month' | 'year'>('month');
+  const [year, setYear] = useState(today.getFullYear());
+  const [month, setMonth] = useState(today.getMonth());
+  const [selectedDate, setSelectedDate] = useState(today);
+
+  const cells = useMemo(() => monthCells(year, month), [year, month]);
+  const changeMonth = (delta: number) => {
+    const next = new Date(year, month + delta, 1);
+    setYear(next.getFullYear());
+    setMonth(next.getMonth());
+  };
+  const selectDate = (d: Date) => { setSelectedDate(d); setYear(d.getFullYear()); setMonth(d.getMonth()); setView('month'); };
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-black text-white flex items-center gap-2"><CalendarDays className="w-5 h-5 text-teal-400" /> Calendario</h1>
+          <p className="text-xs text-slate-400 mt-1">Calendario mensual y anual. Cada día muestra su número y fecha completa.</p>
+        </div>
+        <div className="flex items-center gap-1 rounded-xl bg-slate-900 border border-slate-800 p-1">
+          <button onClick={() => setView('month')} className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 ${view === 'month' ? 'bg-teal-700 text-white' : 'text-slate-400 hover:text-white'}`}><List className="w-3.5 h-3.5" /> Mensual</button>
+          <button onClick={() => setView('year')} className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 ${view === 'year' ? 'bg-teal-700 text-white' : 'text-slate-400 hover:text-white'}`}><Grid3X3 className="w-3.5 h-3.5" /> Anual</button>
+        </div>
+      </div>
+
+      {view === 'month' ? (
+        <div className="rounded-2xl border border-slate-800 bg-slate-900 shadow-md overflow-hidden">
+          <div className="px-4 py-4 border-b border-slate-800 flex items-center justify-between">
+            <button onClick={() => changeMonth(-1)} className="p-2 rounded-xl bg-slate-800 text-slate-300 hover:text-white"><ChevronLeft className="w-4 h-4" /></button>
+            <div className="text-center"><div className="text-lg font-black text-white">{MONTHS[month]} {year}</div><div className="text-[11px] text-teal-400">{formatDayLong(selectedDate)}</div></div>
+            <button onClick={() => changeMonth(1)} className="p-2 rounded-xl bg-slate-800 text-slate-300 hover:text-white"><ChevronRight className="w-4 h-4" /></button>
+          </div>
+          <div className="grid grid-cols-7 border-b border-slate-800 bg-slate-950/70">
+            {WEEKDAYS.map(d => <div key={d} className="py-2 text-center text-[10px] font-black uppercase tracking-wider text-slate-500">{d}</div>)}
+          </div>
+          <div className="grid grid-cols-7 p-2 sm:p-3 gap-1.5 sm:gap-2">
+            {cells.map((d, i) => {
+              const inMonth = d.getMonth() === month;
+              const isToday = iso(d) === iso(today);
+              const selected = iso(d) === iso(selectedDate);
+              return <button key={i} onClick={() => selectDate(d)} className={`min-h-16 sm:min-h-20 rounded-xl border text-left p-2 transition ${inMonth ? 'bg-slate-950/40 border-slate-800 hover:border-teal-700' : 'bg-slate-950/10 border-transparent text-slate-700'} ${selected ? 'ring-1 ring-teal-500 border-teal-700' : ''}`}><span className={`text-sm font-black ${inMonth ? 'text-white' : 'text-slate-700'} ${isToday ? 'inline-flex w-7 h-7 items-center justify-center rounded-full bg-teal-600' : ''}`}>{d.getDate()}</span><span className={`hidden sm:block text-[10px] mt-2 ${inMonth ? 'text-slate-500' : 'text-slate-800'}`}>{formatDayLong(d)}</span></button>;
+            })}
+          </div>
+        </div>
+      ) : (
+        <div>
+          <div className="flex items-center justify-between mb-3 rounded-2xl bg-slate-900 border border-slate-800 p-3"><button onClick={() => setYear(y => y-1)} className="p-2 rounded-xl bg-slate-800 text-slate-300 hover:text-white"><ChevronLeft className="w-4 h-4" /></button><span className="text-lg font-black text-white">{year}</span><button onClick={() => setYear(y => y+1)} className="p-2 rounded-xl bg-slate-800 text-slate-300 hover:text-white"><ChevronRight className="w-4 h-4" /></button></div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">{MONTHS.map((_, i) => <button key={i} onClick={() => { setMonth(i); setView('month'); }} className="text-left"><MonthMini year={year} month={i} /></button>)}</div>
+        </div>
+      )}
+    </div>
+  );
 };

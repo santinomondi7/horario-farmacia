@@ -78,62 +78,39 @@ export const INITIAL_EMPLOYEES: Employee[] = [
   },
 ];
 
-// Calendar / ISO-week helpers. All dates are represented as local YYYY-MM-DD strings.
-export function getWeekInfoForDate(baseDate: Date = new Date()): Week {
+// Helper to get week ID for current date
+export function getCurrentWeekInfo(baseDate: Date = new Date()): Week {
+  // Argentina / local date
   const date = new Date(baseDate);
-  date.setHours(12, 0, 0, 0);
-  const day = date.getDay();
-  const diffToMonday = day === 0 ? -6 : 1 - day;
-  const monday = new Date(date);
-  monday.setDate(date.getDate() + diffToMonday);
+  const day = date.getDay(); // 0 is Sunday, 1 is Monday
+  const diffToMonday = date.getDate() - day + (day === 0 ? -6 : 1);
+  
+  const monday = new Date(date.setDate(diffToMonday));
   monday.setHours(0, 0, 0, 0);
 
   const sunday = new Date(monday);
   sunday.setDate(monday.getDate() + 6);
   sunday.setHours(23, 59, 59, 999);
 
-  // ISO week number/year.
-  const isoThursday = new Date(monday);
-  isoThursday.setDate(monday.getDate() + 3);
-  const year = isoThursday.getFullYear();
-  const jan4 = new Date(year, 0, 4);
-  const jan4Day = jan4.getDay() || 7;
-  const firstThursday = new Date(jan4);
-  firstThursday.setDate(jan4.getDate() + (4 - jan4Day));
-  const weekNumber = 1 + Math.round((isoThursday.getTime() - firstThursday.getTime()) / (7 * 86400000));
+  // Approximate ISO week calculation
+  const tempDate = new Date(monday.getTime());
+  tempDate.setHours(0, 0, 0, 0);
+  tempDate.setDate(tempDate.getDate() + 3 - ((tempDate.getDay() + 6) % 7));
+  const week1 = new Date(tempDate.getFullYear(), 0, 4);
+  const weekNumber = 1 + Math.round(((tempDate.getTime() - week1.getTime()) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7);
+
+  const year = tempDate.getFullYear();
+  const weekId = `${year}-W${String(weekNumber).padStart(2, '0')}`;
 
   return {
-    id: `${year}-W${String(weekNumber).padStart(2, '0')}`,
+    id: weekId,
     year,
     weekNumber,
-    startDate: monday.toISOString().slice(0, 10),
-    endDate: sunday.toISOString().slice(0, 10),
-    status: 'draft',
+    startDate: monday.toISOString().split('T')[0],
+    endDate: sunday.toISOString().split('T')[0],
+    status: 'published',
     updatedAt: new Date().toISOString(),
   };
-}
-
-export function getCurrentWeekInfo(baseDate: Date = new Date()): Week {
-  const week = getWeekInfoForDate(baseDate);
-  week.status = 'published';
-  return week;
-}
-
-export function getWeeksUntilEndOfYear(baseDate: Date = new Date()): Week[] {
-  const current = getWeekInfoForDate(baseDate);
-  const year = baseDate.getFullYear();
-  const result: Week[] = [];
-  let cursor = new Date(`${current.startDate}T12:00:00`);
-  const endOfYear = new Date(year, 11, 31, 12, 0, 0);
-
-  while (cursor <= endOfYear) {
-    const week = getWeekInfoForDate(cursor);
-    if (week.year === year || week.startDate <= endOfYear.toISOString().slice(0, 10)) {
-      result.push(week);
-    }
-    cursor.setDate(cursor.getDate() + 7);
-  }
-  return result;
 }
 
 // Initial realistic shifts for current week

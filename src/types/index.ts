@@ -110,6 +110,13 @@ export interface WeekCoverageStats {
   }[];
 }
 
+export interface WeeklyPayment {
+  weekId: string;
+  employeeId: string;
+  paid: boolean;
+  updatedAt: string;
+}
+
 export interface EmployeeWeeklyStats {
   employeeId: string;
   employeeName: string;

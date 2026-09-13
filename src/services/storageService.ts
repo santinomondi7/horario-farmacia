@@ -1,5 +1,5 @@
-import { Employee, Shift, Week, ScheduleAuditLog, CurrentUser, DayOfWeek } from '../types';
-import { INITIAL_EMPLOYEES, getCurrentWeekInfo, getWeekInfoForDate, getWeeksUntilEndOfYear, generateInitialShifts, INITIAL_AUDIT_LOGS } from '../constants/pharmacy';
+import { Employee, Shift, Week, ScheduleAuditLog, CurrentUser, DayOfWeek, WeeklyPayment } from '../types';
+import { INITIAL_EMPLOYEES, getCurrentWeekInfo, generateInitialShifts, INITIAL_AUDIT_LOGS } from '../constants/pharmacy';
 import { getSupabaseClient, isSupabaseConfigured } from './supabaseClient';
 import { validateShiftTimes, checkShiftsOverlap, formatShiftsForDay } from '../utils/timeCalculations';
 
@@ -8,6 +8,7 @@ const STORAGE_KEYS = {
   WEEKS: 'mondino_weeks_v1',
   SHIFTS: 'mondino_shifts_v1',
   AUDIT_LOGS: 'mondino_audit_logs_v1',
+  WEEKLY_PAYMENTS: 'mondino_weekly_payments_v1',
 };
 
 // Initialize fallback storage data
@@ -339,6 +340,89 @@ export const StorageService = {
   },
 
   // -------------------------------------------------------------
+  // WEEKLY PAYMENTS
+  // -------------------------------------------------------------
+  async getWeeklyPayments(weekId: string): Promise<WeeklyPayment[]> {
+    const supabase = getSupabaseClient();
+    if (isSupabaseConfigured() && supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('weekly_payments')
+          .select('*')
+          .eq('week_id', weekId);
+
+        if (!error && Array.isArray(data)) {
+          const parsed = data.map((p: any) => ({
+            weekId: String(p.week_id),
+            employeeId: String(p.employee_id),
+            paid: p.paid === true,
+            updatedAt: p.updated_at || new Date().toISOString(),
+          }));
+          const raw = localStorage.getItem(STORAGE_KEYS.WEEKLY_PAYMENTS);
+          let all: WeeklyPayment[] = raw ? JSON.parse(raw) : [];
+          all = all.filter(p => p.weekId !== weekId).concat(parsed);
+          localStorage.setItem(STORAGE_KEYS.WEEKLY_PAYMENTS, JSON.stringify(all));
+          return parsed;
+        }
+      } catch (err) {
+        console.warn('Supabase getWeeklyPayments warning:', err);
+      }
+    }
+
+    const raw = localStorage.getItem(STORAGE_KEYS.WEEKLY_PAYMENTS);
+    const all: WeeklyPayment[] = raw ? JSON.parse(raw) : [];
+    return all.filter(p => p.weekId === weekId);
+  },
+
+  async setWeeklyPayment(weekId: string, employeeId: string, paid: boolean, actor: CurrentUser, employeeName: string): Promise<void> {
+    if (actor.role !== 'admin') {
+      throw new Error('Solo administradores pueden marcar semanas como pagadas.');
+    }
+
+    const now = new Date().toISOString();
+    const supabase = getSupabaseClient();
+    if (isSupabaseConfigured() && supabase) {
+      const { error } = await supabase.from('weekly_payments').upsert({
+        week_id: weekId,
+        employee_id: employeeId,
+        paid,
+        updated_at: now,
+      }, { onConflict: 'week_id,employee_id' });
+      if (error) {
+        // The app still works locally if the optional migration has not been run.
+        console.warn('weekly_payments Supabase warning:', error.message);
+      }
+    }
+
+    const raw = localStorage.getItem(STORAGE_KEYS.WEEKLY_PAYMENTS);
+    let all: WeeklyPayment[] = raw ? JSON.parse(raw) : [];
+    const idx = all.findIndex(p => p.weekId === weekId && p.employeeId === employeeId);
+    const item: WeeklyPayment = { weekId, employeeId, paid, updatedAt: now };
+    if (idx >= 0) all[idx] = item; else all.push(item);
+    localStorage.setItem(STORAGE_KEYS.WEEKLY_PAYMENTS, JSON.stringify(all));
+
+    await this.recordAuditLog({
+      weekId,
+      employeeId,
+      employeeName,
+      dayOfWeek: 'mon',
+      previousValue: paid ? 'No pagada' : 'Pagada',
+      newValue: paid ? 'Pagada' : 'No pagada',
+      changedBy: actor.id,
+      changedByName: actor.name,
+    });
+
+    notifyAdminChange({
+      actorName: actor.name,
+      action: `${paid ? 'Semana pagada' : 'Pago desmarcado'}: ${employeeName}`,
+      employeeName,
+      weekId,
+      newValue: paid ? 'Pagada' : 'No pagada',
+      timestamp: now,
+    });
+  },
+
+  // -------------------------------------------------------------
   // WEEKS
   // -------------------------------------------------------------
   async getWeeks(): Promise<Week[]> {
@@ -376,64 +460,6 @@ export const StorageService = {
     const current = getCurrentWeekInfo();
     localStorage.setItem(STORAGE_KEYS.WEEKS, JSON.stringify([current]));
     return [current];
-  },
-
-  // Ensure every week from the current week through December 31 exists.
-  // This removes the old two-week limitation and gives the calendar and Horarios
-  // exactly the same persistent Week records to work with.
-  async ensureWeeksThroughEndOfYear(actor?: CurrentUser): Promise<Week[]> {
-    const isAdmin = actor?.role === 'admin';
-    const existing = await this.getWeeks();
-    const generated = getWeeksUntilEndOfYear(new Date());
-    const byId = new Map(existing.map(w => [w.id, w]));
-
-    for (const generatedWeek of generated) {
-      if (!byId.has(generatedWeek.id)) {
-        const week = {
-          ...generatedWeek,
-          status: generatedWeek.id === getCurrentWeekInfo().id ? 'published' : 'draft',
-        } as Week;
-        // Admins create the future planning horizon. In local-only mode we can
-        // still create it so the app remains usable without Supabase.
-        if (isAdmin || !isSupabaseConfigured()) {
-          await this.saveWeek(week);
-          byId.set(week.id, week);
-        }
-      }
-    }
-
-    return [...byId.values()].sort((a, b) => a.startDate.localeCompare(b.startDate));
-  },
-
-  async getShiftsForWeeks(weekIds: string[]): Promise<Shift[]> {
-    const uniqueIds = [...new Set(weekIds)].filter(Boolean);
-    if (uniqueIds.length === 0) return [];
-
-    // Supabase .in() avoids one request per week and keeps the calendar synced.
-    const supabase = getSupabaseClient();
-    if (isSupabaseConfigured() && supabase) {
-      try {
-        const { data, error } = await supabase.from('shifts').select('*').in('week_id', uniqueIds);
-        if (!error && Array.isArray(data)) {
-          const parsed = data.map((s: any) => ({
-            id: String(s.id), employeeId: String(s.employee_id), weekId: String(s.week_id),
-            dayOfWeek: s.day_of_week as DayOfWeek, startTime: s.start_time, endTime: s.end_time,
-            status: s.status, note: s.note, createdAt: s.created_at, updatedAt: s.updated_at,
-          }));
-          const raw = localStorage.getItem(STORAGE_KEYS.SHIFTS);
-          let allShifts: Shift[] = raw ? JSON.parse(raw) : [];
-          allShifts = allShifts.filter(s => !uniqueIds.includes(s.weekId)).concat(parsed);
-          localStorage.setItem(STORAGE_KEYS.SHIFTS, JSON.stringify(allShifts));
-          return parsed;
-        }
-      } catch (err) {
-        console.warn('Supabase getShiftsForWeeks error, using cache:', err);
-      }
-    }
-
-    const raw = localStorage.getItem(STORAGE_KEYS.SHIFTS);
-    const shifts: Shift[] = raw ? JSON.parse(raw) : [];
-    return shifts.filter(s => uniqueIds.includes(s.weekId));
   },
 
   async saveWeek(week: Week): Promise<void> {
