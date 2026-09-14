@@ -32,6 +32,12 @@ interface WeeklyScheduleTableProps {
     newShifts: { startTime: string; endTime: string; status: ShiftStatus }[]
   ) => Promise<void>;
   hasPreviousWeek: boolean;
+  /** Navigate to the adjacent week. 'next' creates the week on the fly (admin only) if it doesn't exist yet. */
+  onNavigateWeek: (direction: 'prev' | 'next') => void | Promise<void>;
+  /** Whether moving to the next week is currently possible (exists, or admin can create it within the year). */
+  nextWeekAvailable: boolean;
+  /** Last date an admin can create/load a week for (end of current year). */
+  yearEndLimit: Date;
 }
 
 export const WeeklyScheduleTable: React.FC<WeeklyScheduleTableProps> = ({
@@ -45,6 +51,9 @@ export const WeeklyScheduleTable: React.FC<WeeklyScheduleTableProps> = ({
   onOpenWhatsAppShare,
   onSaveDayShifts,
   hasPreviousWeek,
+  onNavigateWeek,
+  nextWeekAvailable,
+  yearEndLimit,
 }) => {
   const [selectedCell, setSelectedCell] = useState<{
     employee: Employee;
@@ -80,15 +89,11 @@ export const WeeklyScheduleTable: React.FC<WeeklyScheduleTableProps> = ({
   const previousWeekObj = currentWeekIndex > 0 ? sortedWeeks[currentWeekIndex - 1] : null;
 
   const handlePrevWeek = () => {
-    if (currentWeekIndex > 0) {
-      onSelectWeek(sortedWeeks[currentWeekIndex - 1].id);
-    }
+    onNavigateWeek('prev');
   };
 
   const handleNextWeek = () => {
-    if (currentWeekIndex < sortedWeeks.length - 1) {
-      onSelectWeek(sortedWeeks[currentWeekIndex + 1].id);
-    }
+    onNavigateWeek('next');
   };
 
   const activeEmployees = employees.filter(e => e.active !== false);
@@ -113,13 +118,21 @@ export const WeeklyScheduleTable: React.FC<WeeklyScheduleTableProps> = ({
 
   return (
     <div id="weekly-schedule-table-container" className="space-y-4">
+      {isAdmin && (
+        <p className="text-[11px] text-slate-500 px-1">
+          Podés avanzar semana a semana y cargar horarios hasta el{' '}
+          <span className="text-slate-300 font-semibold">{yearEndLimit.toLocaleDateString('es-AR')}</span>.
+          También podés ir directo a una fecha desde la pestaña Calendario.
+        </p>
+      )}
+
       {/* Week Navigator & Action Toolbar */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-slate-900/90 border border-slate-800 p-4 rounded-2xl shadow-sm">
         {/* Week navigation */}
         <div className="flex items-center gap-2">
           <button
             onClick={handlePrevWeek}
-            disabled={currentWeekIndex <= 0}
+            disabled={!hasPreviousWeek}
             className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed text-slate-200 transition"
             title="Semana anterior"
           >
@@ -136,6 +149,15 @@ export const WeeklyScheduleTable: React.FC<WeeklyScheduleTableProps> = ({
                 <span className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 border border-slate-700">
                   {currentWeek.id}
                 </span>
+                <span
+                  className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded ${
+                    currentWeek.status === 'published'
+                      ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                      : 'bg-amber-950 text-amber-300 border border-amber-800'
+                  }`}
+                >
+                  {currentWeek.status === 'published' ? 'Publicada' : 'Borrador'}
+                </span>
               </div>
               <p className="text-xs text-slate-400">
                 {formatDateSpanish(currentWeek.startDate)} al {formatDateSpanish(currentWeek.endDate)}
@@ -145,9 +167,13 @@ export const WeeklyScheduleTable: React.FC<WeeklyScheduleTableProps> = ({
 
           <button
             onClick={handleNextWeek}
-            disabled={currentWeekIndex >= sortedWeeks.length - 1}
+            disabled={!nextWeekAvailable}
             className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed text-slate-200 transition"
-            title="Semana siguiente"
+            title={
+              nextWeekAvailable
+                ? 'Semana siguiente'
+                : `No se pueden cargar horarios más allá del ${yearEndLimit.toLocaleDateString('es-AR')}`
+            }
           >
             <ChevronRight className="w-5 h-5" />
           </button>

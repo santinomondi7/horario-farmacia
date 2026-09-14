@@ -13,7 +13,7 @@ import { LoginScreen } from './components/auth/LoginScreen';
 import { StorageService } from './services/storageService';
 import { AuthService, AuthSessionData } from './services/authService';
 import { getSupabaseClient, isSupabaseConfigured } from './services/supabaseClient';
-import { getCurrentWeekInfo } from './constants/pharmacy';
+import { getCurrentWeekInfo, isWeekWithinYearLimit, getScheduleYearEndLimit } from './constants/pharmacy';
 import { CurrentUser, Employee, Week, Shift, ScheduleAuditLog, DayOfWeek, ShiftStatus, WeeklyPayment } from './types';
 import { analyzeWeekCoverage } from './utils/coverageEngine';
 import { CheckCircle2, AlertCircle, X } from 'lucide-react';
@@ -304,6 +304,90 @@ export default function App() {
   const currentWeekIndex = sortedWeeks.findIndex(w => w.id === currentWeekId);
   const previousWeek = currentWeekIndex > 0 ? sortedWeeks[currentWeekIndex - 1] : null;
 
+  // Core: resolve (and, if needed, create) the Week that contains a given date,
+  // then switch the active week to it. This is what lets the schedule section
+  // navigate/sync freely instead of being limited to the 3 initially-seeded weeks.
+  const goToWeekForDate = async (targetDate: Date, opts?: { switchToScheduleTab?: boolean }) => {
+    const targetWeek = getCurrentWeekInfo(targetDate);
+    const existing = weeks.find(w => w.id === targetWeek.id);
+
+    if (existing) {
+      setCurrentWeekId(existing.id);
+      await handleSelectWeek(existing.id);
+      if (opts?.switchToScheduleTab) setCurrentTab('schedule');
+      return;
+    }
+
+    // Week not created yet. Only admins can create new (future) weeks, and only
+    // up to the end of the current calendar year.
+    if (!isWeekWithinYearLimit(targetWeek)) {
+      const limit = getScheduleYearEndLimit();
+      showToast(
+        `No se pueden cargar horarios más allá del ${limit.toLocaleDateString('es-AR')}.`,
+        'info'
+      );
+      return;
+    }
+
+    if (!currentUser || currentUser.role !== 'admin') {
+      showToast('Esa semana todavía no fue cargada por un administrador.', 'info');
+      return;
+    }
+
+    try {
+      const newWeek: Week = { ...targetWeek, status: 'draft' };
+      await StorageService.saveWeek(newWeek);
+      const refreshedWeeks = await StorageService.getWeeks();
+      setWeeks(refreshedWeeks);
+      setCurrentWeekId(newWeek.id);
+      await handleSelectWeek(newWeek.id);
+      if (opts?.switchToScheduleTab) setCurrentTab('schedule');
+      showToast(`Semana ${newWeek.id} (${newWeek.startDate} al ${newWeek.endDate}) creada. Ya podés cargar los horarios.`);
+    } catch (err: any) {
+      console.error('Create week error:', err);
+      showToast(err.message || 'Error al crear la semana.', 'error');
+    }
+  };
+
+  // Prev/Next week navigation from the Horarios (schedule) view.
+  // 'next' can create weeks on the fly (admin only, capped at end of year).
+  // 'prev' only navigates to weeks that already exist.
+  const handleNavigateWeek = async (direction: 'prev' | 'next') => {
+    const base = new Date(`${currentWeek.startDate}T12:00:00`);
+    base.setDate(base.getDate() + (direction === 'next' ? 7 : -7));
+
+    if (direction === 'prev') {
+      const targetWeek = getCurrentWeekInfo(base);
+      const existing = weeks.find(w => w.id === targetWeek.id);
+      if (!existing) {
+        showToast('No hay una semana anterior cargada.', 'info');
+        return;
+      }
+      setCurrentWeekId(existing.id);
+      await handleSelectWeek(existing.id);
+      return;
+    }
+
+    await goToWeekForDate(base);
+  };
+
+  // Whether the "next week" action is currently usable (either the week already
+  // exists, or the admin is allowed to create it because it's within the year).
+  const nextWeekPreview = (() => {
+    const base = new Date(`${currentWeek.startDate}T12:00:00`);
+    base.setDate(base.getDate() + 7);
+    return getCurrentWeekInfo(base);
+  })();
+  const nextWeekExists = weeks.some(w => w.id === nextWeekPreview.id);
+  const nextWeekAvailable =
+    nextWeekExists || (currentUser?.role === 'admin' && isWeekWithinYearLimit(nextWeekPreview));
+
+  // Calendar -> Horarios bridge: selecting a date on the Calendar tab jumps to
+  // (and, for admins, creates) the week that contains it, then opens Horarios.
+  const handleSelectCalendarDate = async (date: Date) => {
+    await goToWeekForDate(date, { switchToScheduleTab: true });
+  };
+
   // Save changes for an employee day shifts (Admin only)
   const handleSaveDayShifts = async (
     employeeId: string,
@@ -512,10 +596,22 @@ export default function App() {
                 onOpenWhatsAppShare={() => setIsWhatsAppModalOpen(true)}
                 onSaveDayShifts={handleSaveDayShifts}
                 hasPreviousWeek={Boolean(previousWeek)}
+                onNavigateWeek={handleNavigateWeek}
+                nextWeekAvailable={nextWeekAvailable}
+                yearEndLimit={getScheduleYearEndLimit()}
               />
             )}
 
-            {currentTab === 'calendar' && <CalendarView />}
+            {currentTab === 'calendar' && (
+              <CalendarView
+                weeks={weeks}
+                shifts={shifts}
+                currentWeek={currentWeek}
+                employees={employees}
+                currentUser={currentUser}
+                onSelectDate={handleSelectCalendarDate}
+              />
+            )}
 
             {currentTab === 'coverage' && (
               <CoverageTimelineView

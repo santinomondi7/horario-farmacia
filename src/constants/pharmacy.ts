@@ -113,6 +113,20 @@ export function getCurrentWeekInfo(baseDate: Date = new Date()): Week {
   };
 }
 
+// Last schedulable date: Dec 31 of the year the app is being used in.
+// Admins can keep creating/loading weeks up to (and including) the week that
+// contains this date; navigation beyond it is blocked.
+export function getScheduleYearEndLimit(referenceDate: Date = new Date()): Date {
+  return new Date(referenceDate.getFullYear(), 11, 31, 23, 59, 59, 999);
+}
+
+// Whether a given week's Monday falls on/before Dec 31 of the reference year.
+export function isWeekWithinYearLimit(week: Week, referenceDate: Date = new Date()): boolean {
+  const yearEnd = getScheduleYearEndLimit(referenceDate);
+  const weekMonday = new Date(`${week.startDate}T00:00:00`);
+  return weekMonday.getTime() <= yearEnd.getTime();
+}
+
 // Initial realistic shifts for current week
 export function generateInitialShifts(weekId: string): Shift[] {
   const now = new Date().toISOString();
